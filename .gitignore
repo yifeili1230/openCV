@@ -1,0 +1,6 @@
+build/
+output/
+.vscode/
+*.swp
+*.swo
+.DS_Store
