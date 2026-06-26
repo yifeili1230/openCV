@@ -1,6 +1,10 @@
 build/
 output/
 .vscode/
+models/*.caffemodel
+models/*.onnx
+models/*.pb
+models/*.t7
 *.swp
 *.swo
 .DS_Store

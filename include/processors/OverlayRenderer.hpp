@@ -1,9 +1,9 @@
 #pragma once
 
-#include <opencv2/highgui.hpp>
-#include <opencv2/imgproc.hpp>
+#include <opencv2/highgui.hpp> // Provides OpenCV GUI-related declarations.
+#include <opencv2/imgproc.hpp> // Provides drawing APIs for boxes, text, and trails.
 
-#include "core/IFrameProcessor.hpp"
+#include "core/IFrameProcessor.hpp"  // Defines the frame processor interface.
 
 namespace video_engine {
 

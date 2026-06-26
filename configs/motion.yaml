@@ -7,3 +7,5 @@ save_path: output/motion_output.mp4
 motion:
   threshold: 25
   min_area: 500
+  merge_padding: 24
+  max_detections: 0

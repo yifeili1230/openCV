@@ -1,10 +1,10 @@
 #pragma once
 
-#include <string>
+#include <string>  // Stores the input video file path.
 
-#include <opencv2/videoio.hpp>
+#include <opencv2/videoio.hpp>  // Provides cv::VideoCapture for video file input.
 
-#include "core/IVideoSource.hpp"
+#include "core/IVideoSource.hpp"  // Defines the common video source interface.
 
 namespace video_engine {
 

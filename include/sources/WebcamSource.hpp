@@ -1,8 +1,8 @@
 #pragma once
 
-#include <opencv2/videoio.hpp>
+#include <opencv2/videoio.hpp>  // Provides cv::VideoCapture for camera input.
 
-#include "core/IVideoSource.hpp"
+#include "core/IVideoSource.hpp"  // Defines the common video source interface.
 
 namespace video_engine {
 

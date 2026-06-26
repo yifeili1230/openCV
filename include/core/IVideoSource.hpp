@@ -1,6 +1,6 @@
 #pragma once
 
-#include <opencv2/core.hpp>
+#include <opencv2/core.hpp>  // Provides cv::Mat for decoded video frames.
 
 namespace video_engine {
 

@@ -1,11 +1,11 @@
 #pragma once
 
-#include <chrono>
-#include <iomanip>
-#include <iostream>
-#include <sstream>
-#include <string>
-#include <vector>
+#include <chrono>   // Measures frame and stage timing.
+#include <iomanip>  // Formats FPS and latency values.
+#include <iostream> // Prints profiler output to stdout.
+#include <sstream>  // Builds formatted profiler log lines.
+#include <string>   // Stores stage names.
+#include <vector>   // Stores stage latency arrays.
 
 namespace video_engine {
 

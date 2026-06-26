@@ -7,6 +7,8 @@ save_path: output/tracking_output.mp4
 motion:
   threshold: 25
   min_area: 500
+  merge_padding: 32
+  max_detections: 1
 tracking:
   max_distance: 80
   max_age: 8

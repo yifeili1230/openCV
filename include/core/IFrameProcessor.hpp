@@ -1,6 +1,6 @@
 #pragma once
 
-#include "core/FrameContext.hpp"
+#include "core/FrameContext.hpp"  // Provides the shared frame data passed to processors.
 
 namespace video_engine {
 

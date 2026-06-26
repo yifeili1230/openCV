@@ -1,9 +1,9 @@
 #pragma once
 
-#include <memory>
-#include <vector>
+#include <memory>  // Owns processors through std::unique_ptr.
+#include <vector>  // Stores the ordered processor chain.
 
-#include "core/IFrameProcessor.hpp"
+#include "core/IFrameProcessor.hpp"  // Defines the processor interface run by the pipeline.
 
 namespace video_engine {
 

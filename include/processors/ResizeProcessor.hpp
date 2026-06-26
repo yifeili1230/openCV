@@ -1,8 +1,8 @@
 #pragma once
 
-#include <opencv2/imgproc.hpp>
+#include <opencv2/imgproc.hpp>  // Provides cv::resize.
 
-#include "core/IFrameProcessor.hpp"
+#include "core/IFrameProcessor.hpp"  // Defines the frame processor interface.
 
 namespace video_engine {
 
