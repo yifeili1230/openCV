@@ -9,3 +9,4 @@ models/*.t7
 *.swo
 .DS_Store
 docs/agents/
+lessons/
