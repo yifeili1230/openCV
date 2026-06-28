@@ -23,6 +23,8 @@ public:
         ctx.pose_inference_ran = false;
         ctx.pose_measurement_valid = false;
         ctx.poses.clear();
+        ctx.pose_analysis.reset();
+        ctx.completed_rep_events.clear();
         last_source_time_seconds_ = source_time_seconds;
     }
 

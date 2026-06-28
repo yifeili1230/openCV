@@ -1,0 +1,24 @@
+# Side-view squat analysis profile for macOS CPU development.
+source: video_source/squat.mov
+width: 640
+height: 480
+display: true
+save_output: true
+save_path: output/squat_annotated
+exercise: squat
+analysis_output_dir: output
+pose:
+  pose_model: models/pose_iter_440000.caffemodel
+  pose_config: models/pose_deploy_linevec.prototxt
+  pose_input_width: 256
+  pose_input_height: 256
+  pose_confidence: 0.12
+  pose_backend: opencv
+  pose_target: cpu
+squat:
+  squat_standing_angle: 160
+  squat_descent_start_angle: 155
+  squat_bottom_angle: 100
+  squat_bottom_exit_angle: 105
+  squat_minimum_speed: 0.02
+  squat_smoothing_alpha: 0.35

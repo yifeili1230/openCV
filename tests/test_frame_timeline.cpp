@@ -17,11 +17,15 @@ int main() {
     ctx.pose_inference_ran = true;
     ctx.pose_measurement_valid = true;
     ctx.poses.push_back(video_engine::Pose{});
+    ctx.pose_analysis = video_engine::PoseAnalysisResult{};
+    ctx.completed_rep_events.push_back(video_engine::SquatRepSummary{});
 
     timeline.beginFrame(ctx, 1.0 / 30.0);
     if (ctx.frame_id != 2 || ctx.pose_inference_ran || ctx.pose_measurement_valid ||
-        !ctx.poses.empty()) {
-        std::cerr << "Second frame reused pose state from the previous frame" << std::endl;
+        !ctx.poses.empty() || ctx.pose_analysis.has_value() ||
+        !ctx.completed_rep_events.empty()) {
+        std::cerr << "Second frame reused pose or analytics state from the previous frame"
+                  << std::endl;
         return 1;
     }
 

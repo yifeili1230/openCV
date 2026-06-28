@@ -152,9 +152,18 @@ metrics before any learned exercise model is introduced?
 
 ### Answer
 
-Open. Implement confidence gating, 2D joint angles, body-scale-normalized position and
-velocity, smoothing, hysteretic phase transitions, rep events, and invalid-data handling.
-Test with synthetic keypoint sequences before connecting video inference.
+Resolved. `SquatAnalyzer` is a pure C++ implementation behind `IPoseAnalyzer`. It selects
+the stronger visible body side, gates low-confidence joints, computes 2D knee/hip angles,
+smooths observations, derives source-time and body-scale-normalized hip velocity, and
+segments standing → descending → bottom → ascending → standing with configurable
+hysteresis. Complete cycles emit rep summaries with descent/ascent time, minimum knee
+angle, and average/peak normalized speed. `PoseAnalyticsProcessor` publishes per-frame
+results and rep events; `PoseAnalyticsRenderer` adds a live side panel; and
+`SquatSummaryWriter` writes `output/<input-stem>.json`. Synthetic tests cover complete,
+shallow, and invalid-observation sequences. A full 117-frame real-model validation
+produced 117 valid analysis frames and one completed rep; a separate early-stop test
+verified a finalized 940×480 panel video and graceful Ctrl+C JSON output. See
+[Squat Analytics Guide](SQUAT_ANALYTICS_GUIDE.md).
 
 ## #10: Faster Accurate Multi-Person Pose Model
 

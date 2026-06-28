@@ -1,0 +1,69 @@
+#pragma once
+
+#include <cstddef>
+#include <cstdint>
+#include <optional>
+#include <string>
+#include <vector>
+
+namespace video_engine {
+
+enum class SquatPhase {
+    Unknown,
+    Standing,
+    Descending,
+    Bottom,
+    Ascending,
+};
+
+inline std::string squatPhaseName(SquatPhase phase) {
+    switch (phase) {
+        case SquatPhase::Standing:
+            return "standing";
+        case SquatPhase::Descending:
+            return "descending";
+        case SquatPhase::Bottom:
+            return "bottom";
+        case SquatPhase::Ascending:
+            return "ascending";
+        case SquatPhase::Unknown:
+        default:
+            return "unknown";
+    }
+}
+
+struct SquatRepSummary {
+    int rep_index = 0;
+    double start_time_seconds = 0.0;
+    double end_time_seconds = 0.0;
+    double descent_time_seconds = 0.0;
+    double ascent_time_seconds = 0.0;
+    double minimum_knee_angle_degrees = 0.0;
+    double average_normalized_speed_per_second = 0.0;
+    double peak_normalized_speed_per_second = 0.0;
+};
+
+struct PoseAnalysisResult {
+    std::uint64_t frame_id = 0;
+    double source_time_seconds = 0.0;
+    bool valid = false;
+    std::string exercise = "squat";
+    SquatPhase phase = SquatPhase::Unknown;
+    int completed_reps = 0;
+    double knee_angle_degrees = 0.0;
+    double hip_angle_degrees = 0.0;
+    bool hip_angle_valid = false;
+    double normalized_vertical_speed_per_second = 0.0;
+    std::string observed_side = "none";
+    std::optional<SquatRepSummary> completed_rep;
+};
+
+struct SquatSessionSummary {
+    std::string source;
+    std::size_t processed_frames = 0;
+    std::size_t valid_analysis_frames = 0;
+    std::size_t invalid_analysis_frames = 0;
+    std::vector<SquatRepSummary> reps;
+};
+
+}  // namespace video_engine

@@ -1,4 +1,5 @@
 #include <chrono>    // Provides timing utilities for FPS and pipeline latency measurement.
+#include <csignal>   // Handles Ctrl+C as a graceful request to finish and save outputs.
 #include <filesystem> // Provides output directory creation and file existence checks.
 #include <fstream>   // Provides file input for reading configs/*.yaml.
 #include <iostream>  // Provides standard output streams for error messages.
@@ -11,12 +12,17 @@
 #include <opencv2/imgproc.hpp>  // Provides OpenCV image processing APIs such as resize and drawing.
 #include <opencv2/videoio.hpp>  // Provides OpenCV video capture/output APIs such as cv::VideoWriter.
 
+#include "analytics/IPoseAnalyzer.hpp"        // Defines the model-independent analytics interface.
+#include "analytics/SquatAnalyzer.hpp"        // Implements mathematical squat analysis.
+#include "analytics/SquatSummaryWriter.hpp"   // Writes the final input-named JSON summary.
 #include "core/FrameContext.hpp"             // Defines the per-frame data object shared across processors.
 #include "core/FrameTimeline.hpp"            // Assigns monotonic frame IDs and source timestamps.
 #include "core/Pipeline.hpp"                 // Runs a sequence of IFrameProcessor stages.
 #include "processors/MotionDetector.hpp"     // Detects moving regions with frame differencing.
 #include "processors/ObjectTracker.hpp"      // Tracks detections by matching bounding-box centroids.
 #include "processors/OverlayRenderer.hpp"    // Draws detection boxes, IDs, and trails on the frame.
+#include "processors/PoseAnalyticsProcessor.hpp" // Connects canonical poses to exercise analysis.
+#include "processors/PoseAnalyticsRenderer.hpp"  // Draws live squat metrics beside the video.
 #include "processors/PoseEstimator.hpp"      // Runs human-pose keypoint inference with OpenCV DNN.
 #include "processors/ResizeProcessor.hpp"    // Resizes each input frame to the configured dimensions.
 #include "processors/SkeletonRenderer.hpp"   // Draws pose keypoints and skeleton connections.
@@ -26,6 +32,12 @@
 
 namespace {  // Keeps helper types and functions private to this translation unit.
 
+volatile std::sig_atomic_t stop_requested = 0;
+
+void requestStop(int) {
+    stop_requested = 1;
+}
+
 struct AppConfig {  // Stores all runtime configuration with defaults.
     std::string source = "webcam";  // Input source; "webcam" means camera, otherwise it is a file path.
     std::string pipeline = "pose";  // Pipeline mode; supported values are motion, tracking, and pose.
@@ -33,6 +45,8 @@ struct AppConfig {  // Stores all runtime configuration with defaults.
     bool display = true;  // Whether to show a live OpenCV window.
     bool save_output = true;  // Whether to save processed frames as a video.
     std::string save_path = "output/output";  // Output video prefix used for numbered MP4 files.
+    std::string exercise = "none";  // Optional exercise analyzer; supported values are none and squat.
+    std::string analysis_output_dir = "output";  // Directory for input-named analytics summaries.
     int width = 640;  // Processing frame width used by ResizeProcessor.
     int height = 480;  // Processing frame height used by ResizeProcessor.
     int threshold = 25;  // Motion binary threshold; higher values are less sensitive.
@@ -50,6 +64,12 @@ struct AppConfig {  // Stores all runtime configuration with defaults.
     std::string inference_platform = "manual";  // Optional profile that selects a matching DNN backend and target.
     std::string pose_backend = "opencv";  // OpenCV DNN backend, for example opencv, openvino, or cuda.
     std::string pose_target = "cpu";  // OpenCV DNN target device, for example cpu, opencl, cuda, or npu.
+    double squat_standing_angle = 160.0;  // Knee angle that completes a return to standing.
+    double squat_descent_start_angle = 155.0;  // Hysteresis threshold for leaving standing.
+    double squat_bottom_angle = 100.0;  // Knee angle required to establish squat depth.
+    double squat_bottom_exit_angle = 105.0;  // Hysteresis threshold for leaving the bottom.
+    double squat_minimum_speed = 0.02;  // Minimum normalized vertical movement used for direction.
+    double squat_smoothing_alpha = 0.35;  // Exponential smoothing weight for new observations.
 };  // End of AppConfig.
 
 void configureInferencePlatform(AppConfig& config, const std::string& platform) {  // Applies convenient hardware-specific inference defaults.
@@ -110,6 +130,10 @@ void applyConfigFile(AppConfig& config, const std::string& path) {  // Applies c
             config.save_output = value == "true";  // Enables saving only for the literal value "true".
         } else if (key == "save_path") {  // Configures output video path.
             config.save_path = value;  // Stores the output path.
+        } else if (key == "exercise") {  // Selects an optional exercise analyzer.
+            config.exercise = value;  // Stores none or squat for validation after CLI overrides.
+        } else if (key == "analysis_output_dir") {  // Configures summary output location.
+            config.analysis_output_dir = value;  // Stores the analytics directory.
         } else if (key == "threshold") {  // Configures motion threshold.
             config.threshold = std::stoi(value);  // Converts the value to an integer.
         } else if (key == "min_area") {  // Configures minimum motion contour area.
@@ -140,6 +164,18 @@ void applyConfigFile(AppConfig& config, const std::string& path) {  // Applies c
             config.pose_backend = value;  // Stores the backend name.
         } else if (key == "pose_target") {  // Configures the OpenCV DNN target device.
             config.pose_target = value;  // Stores the target device name.
+        } else if (key == "squat_standing_angle") {
+            config.squat_standing_angle = std::stod(value);
+        } else if (key == "squat_descent_start_angle") {
+            config.squat_descent_start_angle = std::stod(value);
+        } else if (key == "squat_bottom_angle") {
+            config.squat_bottom_angle = std::stod(value);
+        } else if (key == "squat_bottom_exit_angle") {
+            config.squat_bottom_exit_angle = std::stod(value);
+        } else if (key == "squat_minimum_speed") {
+            config.squat_minimum_speed = std::stod(value);
+        } else if (key == "squat_smoothing_alpha") {
+            config.squat_smoothing_alpha = std::stod(value);
         }  // End of config key dispatch.
     }  // End of config-file line loop.
 }  // End of applyConfigFile.
@@ -173,8 +209,19 @@ AppConfig parseArgs(int argc, char** argv) {  // Parses CLI arguments and loads 
             config.save_path = argv[++i];  // Consumes the next argument as the output path.
         } else if (arg == "--no-save") {  // Handles explicit output-video disabling.
             config.save_output = false;  // Avoids encoding overhead when only live inference is needed.
+        } else if (arg == "--exercise" && i + 1 < argc) {  // Selects exercise analysis.
+            config.exercise = argv[++i];  // Consumes none or squat.
+        } else if (arg == "--analysis-output" && i + 1 < argc) {  // Selects summary directory.
+            config.analysis_output_dir = argv[++i];  // Consumes the output directory.
         }  // End of CLI argument dispatch.
     }  // End of CLI argument loop.
+    if (config.exercise != "none" && config.exercise != "squat") {
+        throw std::runtime_error("Unsupported exercise: " + config.exercise +
+                                 ". Use none or squat.");
+    }
+    if (config.exercise == "squat" && config.pipeline != "pose") {
+        throw std::runtime_error("Squat analysis requires --pipeline pose.");
+    }
     configureInferencePlatform(config, config.inference_platform);  // Resolves the final platform into backend and target settings.
     return config;  // Returns the final runtime configuration.
 }  // End of parseArgs.
@@ -186,14 +233,36 @@ std::unique_ptr<video_engine::IVideoSource> createSource(const AppConfig& config
     return std::make_unique<video_engine::VideoFileSource>(config.source);  // Treats source as a video file path.
 }  // End of createSource.
 
-std::unique_ptr<video_engine::Pipeline> buildPipeline(const AppConfig& config) {  // Builds the processing pipeline.
+std::unique_ptr<video_engine::Pipeline> buildPipeline(
+    const AppConfig& config,
+    std::shared_ptr<video_engine::IPoseAnalyzer>& pose_analyzer) {  // Builds the processing pipeline.
     auto pipeline = std::make_unique<video_engine::Pipeline>();  // Creates an empty processor chain.
     pipeline->addProcessor(std::make_unique<video_engine::ResizeProcessor>(config.width, config.height));  // Normalizes input frame size first.
     if (config.pipeline == "pose") {  // Builds the pose-estimation pipeline.
         pipeline->addProcessor(std::make_unique<video_engine::PoseEstimator>(  // Adds the pose inference stage.
             config.pose_model, config.pose_config, config.pose_input_width, config.pose_input_height,  // Passes model paths and input dimensions.
             config.pose_confidence, config.pose_backend, config.pose_target));  // Passes confidence and inference device settings.
+        if (config.exercise == "squat") {
+            video_engine::SquatAnalyzerConfig analyzer_config;
+            analyzer_config.minimum_joint_confidence = config.pose_confidence;
+            analyzer_config.standing_angle_degrees = config.squat_standing_angle;
+            analyzer_config.descent_start_angle_degrees =
+                config.squat_descent_start_angle;
+            analyzer_config.bottom_angle_degrees = config.squat_bottom_angle;
+            analyzer_config.bottom_exit_angle_degrees = config.squat_bottom_exit_angle;
+            analyzer_config.minimum_normalized_speed_per_second =
+                config.squat_minimum_speed;
+            analyzer_config.smoothing_alpha = config.squat_smoothing_alpha;
+            pose_analyzer =
+                std::make_shared<video_engine::SquatAnalyzer>(analyzer_config);
+            pipeline->addProcessor(
+                std::make_unique<video_engine::PoseAnalyticsProcessor>(pose_analyzer));
+        }
         pipeline->addProcessor(std::make_unique<video_engine::SkeletonRenderer>());  // Adds skeleton drawing after inference.
+        if (config.exercise == "squat") {
+            pipeline->addProcessor(
+                std::make_unique<video_engine::PoseAnalyticsRenderer>());
+        }
         return pipeline;  // Returns early because pose mode does not use motion boxes.
     }  // End of pose pipeline branch.
 
@@ -226,6 +295,7 @@ std::string nextOutputPath(const std::string& output_prefix) {  // Finds the fir
 }  // namespace
 
 int main(int argc, char** argv) {  // Program entry point.
+    std::signal(SIGINT, requestStop);  // Lets Ctrl+C leave the loop and finalize video/JSON outputs.
     AppConfig config;  // Holds the final runtime configuration.
     try {
         config = parseArgs(argc, argv);  // Builds the runtime config from CLI and file input.
@@ -240,20 +310,15 @@ int main(int argc, char** argv) {  // Program entry point.
     }  // End of source open check.
 
     cv::VideoWriter writer;  // Creates a video writer that starts closed.
+    std::string output_video_path;
     if (config.save_output) {  // Enables output writing only when requested.
-        const std::string output_path = nextOutputPath(config.save_path);  // Chooses output0/output1/... without overwriting.
-        writer.open(output_path, cv::VideoWriter::fourcc('m', 'p', '4', 'v'), 30.0,  // Opens an MP4V writer at 30 FPS.
-                    cv::Size(config.width, config.height));  // Uses the same dimensions as the processed frame.
-        if (!writer.isOpened()) {  // Checks whether the output file could be opened.
-            std::cerr << "Failed to open output video: " << output_path << std::endl;  // Reports the failed output path.
-            return 1;  // Returns non-zero to indicate startup failure.
-        }  // End of output writer failure handling.
-        std::cout << "Saving output video to: " << output_path << std::endl;  // Prints the selected output path.
+        output_video_path = nextOutputPath(config.save_path);  // Chooses output0/output1/... without overwriting.
     }  // End of writer setup.
 
     std::unique_ptr<video_engine::Pipeline> pipeline;  // Owns the configured frame-processing pipeline.
+    std::shared_ptr<video_engine::IPoseAnalyzer> pose_analyzer;
     try {
-        pipeline = buildPipeline(config);  // Creates the pipeline and validates its inference device.
+        pipeline = buildPipeline(config, pose_analyzer);  // Creates the pipeline and validates its inference device.
     } catch (const std::exception& error) {
         std::cerr << "Failed to build pipeline: " << error.what() << std::endl;  // Reports model or backend setup failures cleanly.
         return 1;  // Stops before entering the frame loop with an invalid pipeline.
@@ -263,7 +328,7 @@ int main(int argc, char** argv) {  // Program entry point.
 
     size_t frame_index = 0;  // Counts processed frames for FPS calculation.
     auto start_time = video_engine::Profiler::now();  // Captures the start time for average FPS.
-    while (true) {  // Main frame loop.
+    while (!stop_requested) {  // Main frame loop; Ctrl+C requests a graceful stop.
         cv::Mat frame;  // Holds the raw frame read from the input source.
         if (!source->read(frame)) {  // Reads the next frame from the selected source.
             break;  // Stops when the source has no more frames or cannot provide one.
@@ -292,13 +357,23 @@ int main(int argc, char** argv) {  // Program entry point.
             ctx.processed_frame = frame.clone();  // Falls back to the original frame.
         }  // End of processed-frame fallback.
 
+        bool escape_pressed = false;
         if (config.display) {  // Shows the processed frame when display is enabled.
             cv::imshow("Video Engine", ctx.processed_frame);  // Updates the OpenCV display window.
             if (cv::waitKey(1) == 27) {  // Pumps window events and checks for ESC.
-                break;  // Exits the loop when ESC is pressed.
+                escape_pressed = true;  // Finishes writing this frame before exiting.
             }  // End of key handling.
         }  // End of display branch.
 
+        if (config.save_output && !writer.isOpened()) {
+            writer.open(output_video_path, cv::VideoWriter::fourcc('m', 'p', '4', 'v'),
+                        source->fps(), ctx.processed_frame.size());
+            if (!writer.isOpened()) {
+                std::cerr << "Failed to open output video: " << output_video_path << std::endl;
+                return 1;
+            }
+            std::cout << "Saving output video to: " << output_video_path << std::endl;
+        }
         if (writer.isOpened()) {  // Writes output only when the writer opened successfully.
             writer.write(ctx.processed_frame);  // Appends the processed frame to the output video.
         }  // End of output writing branch.
@@ -308,8 +383,30 @@ int main(int argc, char** argv) {  // Program entry point.
         double elapsed = std::chrono::duration<double>(now - start_time).count();  // Computes elapsed seconds.
         double fps = elapsed > 0 ? frame_index / elapsed : 0.0;  // Computes average FPS since startup.
         video_engine::Profiler::logFrameStats(frame_index, fps, ctx.stage_names, ctx.stage_latencies_ms);  // Logs frame stats and latency.
+        if (escape_pressed) {
+            break;
+        }
     }  // End of main frame loop.
 
+    writer.release();  // Finalizes the MP4 before reporting completion or writing the summary.
     cv::destroyAllWindows();  // Closes any OpenCV windows.
+
+    if (pose_analyzer) {
+        video_engine::SquatSessionSummary summary;
+        summary.source = config.source;
+        summary.processed_frames = frame_index;
+        summary.valid_analysis_frames = pose_analyzer->validFrameCount();
+        summary.invalid_analysis_frames = pose_analyzer->invalidFrameCount();
+        summary.reps = pose_analyzer->completedReps();
+        const auto summary_path = video_engine::SquatSummaryWriter::outputPathForSource(
+            config.source, config.analysis_output_dir);
+        try {
+            video_engine::SquatSummaryWriter::write(summary_path, summary);
+        } catch (const std::exception& error) {
+            std::cerr << error.what() << std::endl;
+            return 1;
+        }
+        std::cout << "Squat summary saved to: " << summary_path << std::endl;
+    }
     return 0;  // Returns success.
 }  // End of main.

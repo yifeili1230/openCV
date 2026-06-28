@@ -1,17 +1,16 @@
 # Real-Time Pose and Exercise Analytics Engine
 
 A modular C++17/OpenCV engine for real-time video processing, human-pose inference, and
-future exercise analytics on macOS and NVIDIA Jetson Orin Nano.
+exercise analytics on macOS and NVIDIA Jetson Orin Nano.
 
-The project currently turns webcam or recorded video into motion regions, tracked
-trajectories, or an 18-joint OpenPose skeleton. It also records reliable per-frame
-timestamps and stage-level latency so later joint-angle, movement-speed, repetition, and
-subject-tracking features can be built on measurable data rather than display-only
-results.
+The project turns webcam or recorded video into motion regions, tracked trajectories, or
+an 18-joint OpenPose skeleton. Its squat mode derives joint angles, movement speed,
+phases, and repetitions from reliable per-frame timestamps while preserving structured
+results for future subject tracking and learned analytics.
 
 > Current state: the video engine, pose pipeline, canonical pose schema, timing contract,
-> platform profiles, and tests are implemented. Squat analytics, persistent
-> primary-person tracking, and a faster TensorRT pose model are on the roadmap.
+> mathematical squat analytics, platform profiles, and tests are implemented. Persistent
+> primary-person tracking and a faster TensorRT pose model are on the roadmap.
 
 ## What Has Been Built
 
@@ -25,11 +24,14 @@ results.
 - Optional depth and 3D fields reserved in the pose interface
 - Per-stage latency for preprocessing, inference, postprocessing, rendering, and the
   complete processor pipeline
+- Real-time squat phase, joint-angle, speed, and repetition analysis in a side panel
+- Input-named JSON squat summaries with per-rep metrics
 - CPU configuration for macOS and CUDA FP16 configuration for Jetson Orin Nano
-- Automated tests for motion, tracking, rendering, timeline behavior, and pose mapping
+- Automated tests for motion, tracking, rendering, timeline behavior, pose mapping, and
+  squat state semantics
 
-The current Caffe model produces 2D keypoints. Those results are already available as
-structured data and can be consumed by future analytics instead of being limited to the
+The current Caffe model produces 2D keypoints. Those results are available as structured
+data for the squat analyzer and future learned analytics instead of being limited to the
 skeleton overlay.
 
 ## Demo
@@ -61,12 +63,12 @@ Run the included squat video:
 ```bash
 ./build/video_engine \
   --source video_source/squat.mov \
-  --pipeline pose \
-  --config configs/pose.yaml
+  --config configs/squat.yaml
 ```
 
-Use `--save output/pose_demo` to write an annotated video, or `--no-display --no-save`
-for a clean benchmark.
+The live result places the video on the left and squat phase, angles, speed, and rep count
+on the right. The final summary is written to `output/squat.json`. Use
+`--save output/pose_demo` to write an annotated video.
 
 ## Architecture
 
@@ -92,7 +94,13 @@ Webcam / Video File
  ObjectTracker                      v
         |                    Canonical Pose Schema
         v                            |
- OverlayRenderer             SkeletonRenderer
+ OverlayRenderer          PoseAnalyticsProcessor
+        |                            |
+        |                            v
+        |                    SkeletonRenderer
+        |                            |
+        |                            v
+        |                 PoseAnalyticsRenderer
         |                            |
         +-------------+--------------+
                       v
@@ -191,23 +199,27 @@ Common overrides:
 | `--pipeline motion\|tracking\|pose` | Select the processor pipeline |
 | `--inference-platform cpu` | Force OpenCV DNN CPU inference |
 | `--inference-platform jetson` | Select CUDA FP16 inference |
+| `--exercise squat` | Enable mathematical squat analysis |
+| `--analysis-output <dir>` | Select the JSON summary directory |
 | `--display` / `--no-display` | Enable or disable the GUI window |
 | `--save <prefix>` / `--no-save` | Enable or disable annotated video output |
 
 ## Current Benchmark
 
-Example captured on the current macOS CPU setup with the OpenPose COCO Caffe model:
+Representative frame from the completed 117-frame macOS CPU squat validation:
 
 | Stage | Example latency |
 | --- | ---: |
-| Resize | 0.40 ms |
-| Pose preprocessing | 0.41 ms |
-| Neural-network inference | 261.56 ms |
+| Resize | 0.28 ms |
+| Pose preprocessing | 0.26 ms |
+| Neural-network inference | 262.30 ms |
 | Pose postprocessing | 0.01 ms |
-| Complete pose estimator | 261.98 ms |
-| Skeleton rendering | 0.10 ms |
-| Processor pipeline | 262.47 ms |
-| Observed throughput | 3.4 FPS |
+| Complete pose estimator | 262.57 ms |
+| Squat analytics | <0.01 ms |
+| Skeleton rendering | 0.09 ms |
+| Analytics side panel | 0.60 ms |
+| Processor pipeline | 263.55 ms |
+| Observed throughput | 3.8 FPS |
 
 Inference is the dominant cost; resizing and drawing are currently negligible by
 comparison. This points the next optimization effort toward a smaller model and an
@@ -225,11 +237,6 @@ For a reproducible benchmark procedure and an explanation of every timing field,
 
 ### Next
 
-- Implement a pure mathematical squat analyzer
-  - 2D hip, knee, and ankle angles
-  - movement speed from source timestamps
-  - squat phase state machine and repetition counting
-  - confidence gating, smoothing, and invalid-frame handling
 - Add persistent primary-person tracking
   - retain the selected athlete when other people enter the frame
   - use position, bounding-box overlap, keypoint similarity, and reacquisition rules
@@ -254,6 +261,7 @@ Detailed decisions, dependencies, and implementation tickets are maintained in t
 | --- | --- |
 | [Video Engine Guide](docs/VIDEO_ENGINE_GUIDE.md) | Full runtime architecture, processors, configuration, and extension points |
 | [Pose Inference Guide](docs/POSE_INFERENCE_GUIDE.md) | Pose data flow, timing, settings, CPU/GPU boundaries, and benchmarking |
+| [Squat Analytics Guide](docs/SQUAT_ANALYTICS_GUIDE.md) | Live metrics, rep semantics, settings, JSON output, and limitations |
 | [Platform Run Guide](docs/PLATFORM_RUN_GUIDE.md) | macOS and Jetson Orin Nano setup and commands |
 | [Pose Analytics Decision Map](docs/POSE_ANALYTICS_DECISION_MAP.md) | Resolved design choices, roadmap tickets, and acceptance criteria |
 | [Resources](RESOURCES.md) | NVIDIA, OpenCV, TensorRT, tracking, and calibration references |

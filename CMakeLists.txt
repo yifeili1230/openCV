@@ -37,3 +37,8 @@ add_executable(pose_schema_test tests/test_pose_schema.cpp)
 target_link_libraries(pose_schema_test PRIVATE ${OpenCV_LIBS})
 target_include_directories(pose_schema_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
 add_test(NAME pose_schema_test COMMAND pose_schema_test)
+
+add_executable(squat_analyzer_test tests/test_squat_analyzer.cpp)
+target_link_libraries(squat_analyzer_test PRIVATE ${OpenCV_LIBS})
+target_include_directories(squat_analyzer_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+add_test(NAME squat_analyzer_test COMMAND squat_analyzer_test)

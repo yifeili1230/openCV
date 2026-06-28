@@ -4,7 +4,9 @@ This document explains how the video engine works, what each part of the code do
 
 For focused deployment commands and inference performance details, see
 [Platform Run Guide](PLATFORM_RUN_GUIDE.md) and
-[Pose Inference Guide](POSE_INFERENCE_GUIDE.md).
+[Pose Inference Guide](POSE_INFERENCE_GUIDE.md). For live joint angles, squat phases,
+repetition counting, and JSON summaries, see
+[Squat Analytics Guide](SQUAT_ANALYTICS_GUIDE.md).
 
 ## 1. What This Project Does
 
@@ -20,6 +22,9 @@ Then it can process those frames with one of three pipelines:
 - `motion`: detects moving regions and draws boxes.
 - `tracking`: detects moving regions, assigns object IDs, and draws motion trails.
 - `pose`: detects human body keypoints and draws a skeleton.
+
+Pose mode can additionally run `--exercise squat` to append a real-time analytics panel
+and write an input-named session summary under `output/`.
 
 The program is built around a simple idea:
 

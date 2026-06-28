@@ -124,7 +124,11 @@ optional depth and optional 3D position per joint
 ```
 
 The pose types are declared in `include/pose/PoseTypes.hpp` and do not depend on OpenCV.
-This lets mathematical analyzers and future model adapters share one interface.
+This lets the mathematical `SquatAnalyzer` and future model adapters share one interface.
+When `--exercise squat` is enabled, `PoseAnalyticsProcessor` consumes the canonical pose
+and publishes per-frame phase, angle, speed, and repetition data before
+`PoseAnalyticsRenderer` adds the live side panel. See
+[Squat Analytics Guide](SQUAT_ANALYTICS_GUIDE.md).
 
 This postprocessing currently runs on the CPU.
 

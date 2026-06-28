@@ -84,6 +84,18 @@ The CPU profile can also be selected explicitly:
 Do not select the Jetson profile with a normal macOS OpenCV build. macOS does not provide
 the NVIDIA CUDA backend.
 
+### 3.5 Squat analysis
+
+```bash
+./build/video_engine \
+  --source video_source/squat.mov \
+  --config configs/squat.yaml
+```
+
+The live window adds a metrics panel beside the video. The final session summary is
+written to `output/squat.json`. See
+[Squat Analytics Guide](SQUAT_ANALYTICS_GUIDE.md).
+
 ## 4. Build and Run on Jetson Orin Nano
 
 ### 4.1 Software requirements
@@ -182,6 +194,19 @@ tegrastats
 
 Check GPU load, CPU load, memory use, temperature, and power.
 
+### 4.6 Squat analysis with CUDA FP16
+
+```bash
+./build/video_engine \
+  --source video_source/squat.mov \
+  --pipeline pose \
+  --config configs/pose_jetson.yaml \
+  --exercise squat
+```
+
+Exercise analysis remains on the CPU and consumes the canonical pose produced by CUDA
+inference. Its measured cost is small compared with the current neural network.
+
 ## 5. Command-Line Options
 
 | Option | Effect |
@@ -195,13 +220,16 @@ Check GPU load, CPU load, memory use, temperature, and power.
 | `--inference-platform cpu` | Force OpenCV CPU inference |
 | `--inference-platform jetson` | Force CUDA FP16 inference |
 | `--inference-platform jetson-orin-nano` | Explicit alias for the Jetson profile |
+| `--exercise squat` | Enable mathematical squat analysis and its live side panel |
+| `--analysis-output <dir>` | Select the JSON summary directory |
 | `--display` | Enable the OpenCV window |
 | `--no-display` | Disable the window, useful over SSH |
 | `--save <prefix>` | Enable output video and set its path prefix |
 | `--no-save` | Disable output video |
 
 The configuration file is loaded first and command-line overrides are applied afterward.
-The supported overrides include source, inference platform, display, and saving behavior.
+The supported overrides include source, inference platform, exercise analysis, display,
+saving behavior, and analytics output location.
 
 ## 6. Reading Latency Logs
 
